@@ -1,0 +1,158 @@
+copyright = Kent Andersson
+www       = none
+email     = kent@smmab.se
+comment   = I2C LCD driver
+libversion   = 1.02
+date         = 31 march 2002
+statement    = You are free to use this code any way you like, if you are able to optimize
+statement    = it better, please send me an update on my e-mail.
+history      = No known bugs.
+
+;define a constant named PCF8574_LCD pointing to the i2c address
+;dimension _lcd_e as byte to control the E-lines (4 lines LCD:s)
+;_lcd_e should have one of the following values
+;128 to enable E1, 64 to enable E2, 192 to enable both E1 and E2 (cls, deflcdchar) 
+;Connect the following pins from PCF8574 to LCD
+;
+;P0 - D4
+;P1 - D5
+;P2 - D6
+;P3 - D7
+;P4 - RS
+;P5 - RW (not used, set to 0 to ground for write)
+;P6 - E2 (on 1 or 2 line display nc)
+;P7 - E1
+;
+; EDIT 07.01.2011 according an Hint from MagicWhiteSmoke of bascom-forum.de
+; now you can define the PINs used using constants like this:
+; Const Pcf_d4 = 4
+; Const Pcf_d5 = 5
+; Const Pcf_d6 = 6
+; Const Pcf_d7 = 7
+; Const Pcf_rs = 0
+; Const Pcf_rw = 1
+; Const Pcf_e2 = 3
+; Const Pcf_e1 = 2
+;
+; You should also define a 
+;Const Pcf_e2_is_output = 0
+;Const Pcf_rw_is_output = 0
+
+; EDIT 10.10.2011 according an Hint from Galahat of bascom-forum.de
+; If you don't need the E2 or RW (e.g. with an 16*2 LCD and RW on GND) you can connect the LCD Backlight to
+; the remaining Port, and set
+;Const Pcf_e2_is_output = 1
+;Const Pcf_rw_is_output = 1 
+;Dim _Out_RW as Byte
+;Dim _Out_E2 as  Byte
+;_Out_RW = 1
+;_Out_E2 = 1
+
+; So the light is switched on or off with every Display command (like Display on)
+
+
+[_Init_LCD]
+_Init_LCD:
+	*BASIC: waitms 50
+; this is to make the initialization on both halfs of a 4-line LCD
+	ldi r16,&hc0       		; Lade 11000000 in Register 16
+; at init-time I call all routines before _lcd_e is loaded into r16
+	Ldi _temp1, &h03   		; Lade 00000011 in _temp1 --> D4 und D5
+	Rcall _Send_to_LCD		; Rufe _Send_to_LCD auf
+	*BASIC: waitms 4		
+	Rcall _Send_to_LCD		; Rufe _Send_to_LCD auf	--> nochmal D4 und D5
+	Rcall _Send_to_LCD		; Rufe _Send_to_LCD auf --> nochmal D4 und D5
+	Ldi _temp1, &h02		; Lade 00000010 in _temp1 --> D5
+	Rcall _Send_to_LCD		; Rufe _Send_to_LCD auf
+	Ldi _temp1, &h28		; Lade 00101000 in _temp1 --> RW und D7
+;RS flag should to be 0,
+;so jump directly to write byte
+	Rcall _Write_lcd_byte		; Rufe _Write_lcd_byte auf
+	Ldi _temp1, &h08		; Lade 00001000 in _temp1 --> D7
+	Rcall _Write_lcd_byte		; Rufe _Write_lcd_byte auf
+	Ldi _temp1, &h0c		; Lade 00001100 in _temp1 --> D6 und D7		
+	Rcall _Write_lcd_byte		; Rufe _Write_lcd_byte auf
+	Ldi _temp1, &h01		; Lade 00000001 in _temp1 --> D4
+	Rjmp _Write_lcd_byte		; Springe zu _Write_lcd_byte
+[END]
+
+
+[_Write_lcd]
+_Write_lcd:
+	*lds r16,{_lcd_e}		; Packe den Inhalt von der Speicheradresse der Variable _lcd_e in Register 16 
+;set RS flag (4 high bits is used as control)
+	sbr r16,&h10			; Setze die Mask 00010000 auf R16
+	rjmp _write_lcd_byte		; Springe zu _write_lcd_byte
+_Lcd_Control:
+	*lds r16,{_lcd_e} 		; Packe den Inhalt von der Speicheradresse der Variable _lcd_e in Register 16 
+_write_lcd_byte:
+	push r24			; Register 24 ab auf den Stack
+	Swap _temp1                     ; in _temp1 die oberen 4 mit den unteren 4 Bit tauschen         
+	Rcall _Write_lcd_Nibble 	; Rufe _Write_lcd_Nibble auf
+	pop r24        			; Register 24 wieder vom Stack zur?ck
+_Write_lcd_nibble:
+; E1, E2, RW, RS low	
+	Cbr _temp1,&HF0			; Loesche die Mask 11110000 von _temp1
+_Send_to_LCD:
+	push r26			; Register 26 ab auf den Stack
+	push r27			; Register 27 ab auf den Stack
+	ldi r25,3			; Lade die 3 (00000011) in R25
+_send_3_times:
+	PUSH _temp2			; _temp2 auf den Stack
+	BST  _temp1, 0			; Bit0 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_D4		; Das T-Bit wird in _temp2 an Position PCD_D4 geschrieben
+  	BST  _temp1, 1			; Bit1 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_D5		; Das T-Bit wird in _temp2 an Position PCD_D5 geschrieben
+	BST  _temp1, 2			; Bit2 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_D6		; Das T-Bit wird in _temp2 an Position PCD_D6 geschrieben
+	BST  _temp1, 3			; Bit3 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_D7		; Das T-Bit wird in _temp2 an Position PCD_D7 geschrieben
+	BST  _temp1, 4			; Bit4 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_RS		; Das T-Bit wird in _temp2 an Position PCD_RS geschrieben
+	BST  _temp1, 5			; Bit5 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_RW		; Das T-Bit wird in _temp2 an Position PCD_RW geschrieben
+	BST  _temp1, 6			; Bit6 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_E2		; Das T-Bit wird in _temp2 an Position PCD_E2 geschrieben
+	BST  _temp1, 7			; Bit7 aus _temp1 ins T-Bit
+	*BLD  _temp2, PCF_E1		; Das T-Bit wird in _temp2 an Position PCD_E1 geschrieben
+_check_e2_option:
+ push r16   ; Register 16 auf den Stack
+*ldi r16, Pcf_e2_is_output ; Die Konstante Pcf_e2_is_output in Register 16
+ bst r16, 0   ; Bit 0 in das T-Bit
+ pop r16    ; Register 16 vom Stack holen
+*brtc _check_rw_option  ; Wenn T-Bit = 0 dann gleich weiter mit _check_beleuchtung_rw
+ push r16   ; Register 16 auf den Stack
+*lds r16,{_out_E2}  ; Die Variable _lcd_light in Register 16 laden
+ *bst r16, 0   ; Bit 0 von Register 16 in das T-Bit
+ *bld _temp2, PCF_E2  ; Das T-Bit an die PCF_E2-Stelle von _temp2 schreiben
+ pop r16    ; Register 16 vom Stack holen
+_check_rw_option:
+ push r16   ; Register 16 auf den Stack
+*ldi r16, Pcf_RW_is_output ; Die Konstante Pcf_RW_is_light in Register 16
+ bst r16, 0   ; Bit 0 in das T-Bit
+ pop r16    ; Register 16 vom Stack holen
+ *brtc _i2c_send_to_lcd  ; Wenn T-Bit = 0 dann gleich weiter mit _i2c_send_to_lcd
+ push r16   ; Register 16 auf den Stack
+*lds r16,{_out_RW}  ; Die Variable _lcd_light in Register 16 laden
+*bst r16, 0   ; Bit 0 von Register 16 in das T-Bit
+*bld _temp2, PCF_RW  ; Das T-Bit an die PCF_E2-Stelle von _temp2 schreiben
+ pop r16    ; Register 16 vom Stack holen
+_i2c_send_to_lcd:
+	*BASIC: i2csend pcf8574_LCD, _temp2	
+	POP  _temp2			; _temp2 aus dem Stack holen
+; *BASIC: i2csend pcf8574_LCD,_temp1
+; Xor E1 and/or E2 to set them	
+	eor _temp1,R16			; Die Bits, die in Register 16 gesetzt sind, werden in _temp1 invertiert (das ist der E-Pulse)
+; @genus(250)
+	ldi r26,0			; Lade 00000000 in Register 26
+_LCD_delay:
+	dec R26				; Register 26 um einen herunter
+	brne _LCD_delay			; Solange R26 nicht Null, zur?ck zu _LCD_delay
+	Dec R25				; Register 25 um einen herunter
+	Brne _send_3_times 		; Solange R25 nicht Null, zur?ck zu _send_3_times
+; Xor to restore to initial state (even number of times)
+	eor _temp1,R16			; zum Abschluss nochmal die E-Bits in _temp1 invertieren
+	pop r27				; Register 27 vom Stack holen
+	pop r26				; Register 26 vom Stack holen
+	ret				; Zur?ck
+[END]
